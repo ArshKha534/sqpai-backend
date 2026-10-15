@@ -31,7 +31,7 @@ def predict():
         user_age = int(data.get("age", 30))
         user_stress = int(data.get("stress", 5))
 
-        # 🛑 SAFEGUARD 1: Physical Limits
+        # 🛑 SAFEGUARD 1: Physical Limits (Keeps explanatory error message)
         if user_hours > 24 or user_hours < 0 or user_age < 0 or user_age > 120:
             return jsonify({"quality": "1/10 (Error: Input values physically impossible)"})
 
@@ -58,10 +58,9 @@ def predict():
                 calculated_score -= 1
                 
             final_score = max(1, min(10, calculated_score))
-            return jsonify({"quality": f"{final_score}/10 (Dynamic Age-Threshold Assessment)"})
+            return jsonify({"quality": f"{final_score}/10"})
 
         # --- DYNAMIC FEATURE RECONSTRUCTION ---
-        # Extract exact feature names the scaler was trained on
         if hasattr(scaler, 'feature_names_in_'):
             expected_cols = list(scaler.feature_names_in_)
         elif hasattr(best_mlp_model, 'feature_names_in_'):
