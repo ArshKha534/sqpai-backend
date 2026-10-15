@@ -5,9 +5,9 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)  # Enables cross-origin requests from your GitHub Pages frontend
+CORS(app)  # Allows requests from your GitHub Pages site
 
-# Load the trained model and scaler on startup
+# Load model and scaler
 MODEL_PATH = 'best_mlp_model.pkl'
 SCALER_PATH = 'scaler.pkl'
 
@@ -60,34 +60,40 @@ def predict():
             final_score = max(1, min(10, calculated_score))
             return jsonify({"quality": f"{final_score}/10 (Dynamic Age-Threshold Assessment)"})
 
-        # --- STANDARD AI PATHWAY ---
-        # Reconstruct feature structure matching training data
-        feature_columns = getattr(best_mlp_model, 'feature_names_in_', None)
-        
-        if feature_columns is not None:
-            input_data = pd.DataFrame(0, index=[0], columns=feature_columns)
+        # --- DYNAMIC FEATURE RECONSTRUCTION ---
+        # Extract exact feature names the scaler was trained on
+        if hasattr(scaler, 'feature_names_in_'):
+            expected_cols = list(scaler.feature_names_in_)
+        elif hasattr(best_mlp_model, 'feature_names_in_'):
+            expected_cols = list(best_mlp_model.feature_names_in_)
         else:
-            # Fallback to standard columns if feature names aren't embedded
-            cols = ['Sleep Duration', 'Age', 'Stress Level', 'Physical Activity Level', 
-                    'Heart Rate', 'Daily Steps', 'Systolic Blood Pressure', 
-                    'Diastolic Blood Pressure', 'Gender_Female', 'Gender_Male']
-            input_data = pd.DataFrame(0, index=[0], columns=cols)
+            return jsonify({"quality": "Error: Scaler missing feature_names_in_ metadata."})
 
-        # Baseline defaults
-        for col, val in [('Physical Activity Level', 55), ('Heart Rate', 72), 
-                         ('Daily Steps', 6500), ('Systolic Blood Pressure', 120), 
-                         ('Diastolic Blood Pressure', 80)]:
-            if col in input_data.columns:
-                input_data[col] = val
+        # Create zero-initialized DataFrame with exact training columns
+        input_data = pd.DataFrame(0, index=[0], columns=expected_cols)
 
-        input_data['Sleep Duration'] = user_hours
-        input_data['Age'] = user_age
-        input_data['Stress Level'] = user_stress
-        
+        # Fill numerical features if present
+        if 'Sleep Duration' in input_data.columns: input_data['Sleep Duration'] = user_hours
+        if 'Age' in input_data.columns: input_data['Age'] = user_age
+        if 'Stress Level' in input_data.columns: input_data['Stress Level'] = user_stress
+        if 'Physical Activity Level' in input_data.columns: input_data['Physical Activity Level'] = 55
+        if 'Heart Rate' in input_data.columns: input_data['Heart Rate'] = 72
+        if 'Daily Steps' in input_data.columns: input_data['Daily Steps'] = 6500
+        if 'Systolic Blood Pressure' in input_data.columns: input_data['Systolic Blood Pressure'] = 120
+        if 'Diastolic Blood Pressure' in input_data.columns: input_data['Diastolic Blood Pressure'] = 80
+
+        # One-hot encoded categorical matching
         gender_col = f"Gender_{user_gender}"
         if gender_col in input_data.columns:
             input_data[gender_col] = 1
 
+        # Default standard category values for auxiliary encoded features
+        for default_cat in ['BMI Category_Normal', 'BMI Category_Normal Weight', 'Occupation_Doctor']:
+            if default_cat in input_data.columns:
+                input_data[default_cat] = 1
+                break
+
+        # Transform features and run prediction
         input_scaled = scaler.transform(input_data)
         prediction = best_mlp_model.predict(input_scaled)
         ai_quality_score = int(prediction[0])
